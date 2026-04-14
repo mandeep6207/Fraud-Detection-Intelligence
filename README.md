@@ -1,99 +1,107 @@
-﻿# Fraud Detection ML Project
+﻿# Fraud Detection Product
 
-A complete, modular end-to-end machine learning project for fraud detection using Python.
+Production-style fraud detection system with a single orchestrated ML pipeline, persisted artifacts, FastAPI inference service, and API-driven Streamlit dashboard.
 
-## Project Features
+## System Flow
 
-- Data loading and preview pipeline
-- Exploratory data analysis (EDA)
-- Preprocessing with missing value handling, encoding, and scaling
-- Training with Logistic Regression and Random Forest
-- Evaluation using Accuracy, Precision, Recall, F1, and Confusion Matrix
-- Model persistence with joblib
-- Inference with fraud probability scores
-- Basic model explainability utilities
-- Visualization module for fraud distribution and correlation heatmap
-- Streamlit dashboard for interactive prediction and charts
+1. Load labeled transaction data from CSV.
+2. Build preprocessing pipeline (imputation + one-hot encoding + scaling).
+3. Train Logistic Regression and Random Forest.
+4. Evaluate with Accuracy, Precision, Recall, F1, ROC-AUC, PR-AUC.
+5. Tune decision threshold using PR-curve for best F1.
+6. Auto-select best model by configured metric (`f1` or `roc_auc`).
+7. Save artifacts to `models/`:
+	 - `model.pkl`
+	 - `preprocessing_pipeline.pkl`
+	 - `metrics.json`
+8. Serve online predictions via FastAPI `/predict`.
+9. Use Streamlit dashboard as an API client.
 
-## Folder Structure
+## Structure
 
-- `src/` : Core ML modules
-- `data/` : Raw and processed datasets
-- `models/` : Saved model artifacts
-- `dashboard/` : Streamlit dashboard app
+```
+src/
+	data/
+	features/
+	models/
+	evaluation/
+	inference/
+	api/
+	pipeline/
+	main.py
+models/
+	model.pkl
+	preprocessing_pipeline.pkl
+	metrics.json
+dashboard/
+	app.py
+```
 
-## Requirements
-
-Install dependencies:
+## Setup
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Usage
-
-### 1) Load and preview dataset
+## Train
 
 ```bash
-python src/data_loader.py --data-path data/processed/fraud.csv --rows 5
+python -m src.main train --data-path data/processed/fraud.csv --target-column is_fraud --selection-metric f1
 ```
 
-### 2) Run EDA
+## Evaluate Saved Model
 
 ```bash
-python src/eda.py --data-path data/processed/fraud.csv
+python -m src.main evaluate --data-path data/processed/fraud.csv --target-column is_fraud
 ```
 
-### 3) Train models and print metrics
+## Predict One Transaction
 
 ```bash
-python src/train.py --data-path data/processed/fraud.csv --target-column is_fraud
+python -m src.main predict --input-json "{\"amount\": 1250, \"merchant\": \"StoreA\", \"transaction_type\": \"online\"}"
 ```
 
-### 4) Train and save models
+## Explain One Prediction
 
 ```bash
-python src/save_model.py --data-path data/processed/fraud.csv --target-column is_fraud --output-dir models/artifacts
+python -m src.main explain --input-json "{\"amount\": 1250, \"merchant\": \"StoreA\", \"transaction_type\": \"online\"}" --top-n 10
 ```
 
-### 5) Predict on new transaction
+## Run API
 
 ```bash
-python src/predict.py --model-path models/artifacts/random_forest.joblib --input-json "{\"amount\": 1200, \"merchant\": \"StoreA\", \"transaction_type\": \"online\"}"
+uvicorn src.api.server:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### 6) Explain model behavior
-
-```bash
-python src/explain.py --model-path models/artifacts/random_forest.joblib --input-path data/processed/fraud.csv --top-n 10
-```
-
-### 7) Generate visualizations
-
-```bash
-python src/visualize.py --data-path data/processed/fraud.csv --target-column is_fraud --output-dir reports
-```
-
-### 8) Launch dashboard
+## Run Dashboard
 
 ```bash
 streamlit run dashboard/app.py
 ```
 
-## Main Files
+## API Contract
 
-- `src/data_loader.py`
-- `src/eda.py`
-- `src/preprocessing.py`
-- `src/train.py`
-- `src/evaluate.py`
-- `src/save_model.py`
-- `src/predict.py`
-- `src/explain.py`
-- `src/visualize.py`
-- `dashboard/app.py`
+`POST /predict`
 
-## Notes
+Request body:
 
-- Ensure the target label is binary (for example: `0` = non-fraud, `1` = fraud).
-- For best results, clean schema inconsistencies before training.
+```json
+{
+	"transaction": {
+		"amount": 1250,
+		"merchant": "StoreA",
+		"transaction_type": "online"
+	}
+}
+```
+
+Response:
+
+```json
+{
+	"fraud_probability": 0.82,
+	"label": 1,
+	"threshold": 0.47,
+	"model": "random_forest"
+}
+```
