@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from typing import Any, Literal
 
 import pandas as pd
 
@@ -35,6 +36,53 @@ def display_dataset_info(dataframe: pd.DataFrame) -> None:
 
     print("\nMissing values per column:")
     print(dataframe.isnull().sum())
+
+
+def handle_missing_values(
+    dataframe: pd.DataFrame,
+    strategy: Literal[
+        "drop", "mean", "median", "mode", "ffill", "bfill", "constant"
+    ] = "mean",
+    fill_value: Any | None = None,
+) -> pd.DataFrame:
+    """Handle missing values using a basic strategy and return a new DataFrame."""
+    df = dataframe.copy()
+
+    if strategy == "drop":
+        return df.dropna()
+
+    if strategy == "mean":
+        numeric_columns = df.select_dtypes(include="number").columns
+        df[numeric_columns] = df[numeric_columns].fillna(df[numeric_columns].mean())
+        return df
+
+    if strategy == "median":
+        numeric_columns = df.select_dtypes(include="number").columns
+        df[numeric_columns] = df[numeric_columns].fillna(df[numeric_columns].median())
+        return df
+
+    if strategy == "mode":
+        for column in df.columns:
+            mode_values = df[column].mode(dropna=True)
+            if not mode_values.empty:
+                df[column] = df[column].fillna(mode_values.iloc[0])
+        return df
+
+    if strategy == "ffill":
+        return df.ffill()
+
+    if strategy == "bfill":
+        return df.bfill()
+
+    if strategy == "constant":
+        if fill_value is None:
+            raise ValueError("`fill_value` must be provided when strategy='constant'.")
+        return df.fillna(fill_value)
+
+    raise ValueError(
+        "Invalid strategy. Use one of: "
+        "'drop', 'mean', 'median', 'mode', 'ffill', 'bfill', 'constant'."
+    )
 
 
 def parse_args() -> argparse.Namespace:
