@@ -1,99 +1,103 @@
-"""Preprocessing utilities for fraud detection ML pipelines."""
+"""Preprocessing utilities for fraud detection pipeline."""
 
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Literal
 
 import pandas as pd
 from sklearn.compose import ColumnTransformer
-from sklearn.model_selection import train_test_split
+from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 
-NumericCols = list[str]
-CategoricalCols = list[str]
-
-
 def split_features_target(df: pd.DataFrame, target_column: str) -> tuple[pd.DataFrame, pd.Series]:
-    """Split a DataFrame into features and target."""
+    """Split input dataframe into features X and target y."""
     if target_column not in df.columns:
-        raise ValueError(f"Target column '{target_column}' not found in dataset.")
-
+        raise ValueError(f"Target column '{target_column}' not found in dataframe.")
     x = df.drop(columns=[target_column])
     y = df[target_column]
     return x, y
 
 
-def infer_feature_types(
+def handle_missing_values(
+    df: pd.DataFrame,
+    strategy: Literal["drop", "mean", "median", "mode", "ffill", "bfill"] = "median",
+) -> pd.DataFrame:
+    """Handle missing values with simple global strategies."""
+    cleaned = df.copy()
+
+    if strategy == "drop":
+        return cleaned.dropna()
+    if strategy == "mean":
+        num_cols = cleaned.select_dtypes(include="number").columns
+        cleaned[num_cols] = cleaned[num_cols].fillna(cleaned[num_cols].mean())
+        return cleaned
+    if strategy == "median":
+        num_cols = cleaned.select_dtypes(include="number").columns
+        cleaned[num_cols] = cleaned[num_cols].fillna(cleaned[num_cols].median())
+        return cleaned
+    if strategy == "mode":
+        for col in cleaned.columns:
+            mode_values = cleaned[col].mode(dropna=True)
+            if not mode_values.empty:
+                cleaned[col] = cleaned[col].fillna(mode_values.iloc[0])
+        return cleaned
+    if strategy == "ffill":
+        return cleaned.ffill()
+    if strategy == "bfill":
+        return cleaned.bfill()
+
+    raise ValueError("Unsupported strategy.")
+
+
+def infer_column_types(
     x: pd.DataFrame,
-    numeric_features: Sequence[str] | None = None,
-    categorical_features: Sequence[str] | None = None,
-) -> tuple[NumericCols, CategoricalCols]:
-    """Infer or validate numeric and categorical feature lists."""
-    if numeric_features is not None and categorical_features is not None:
-        numeric_cols = list(numeric_features)
-        categorical_cols = list(categorical_features)
-    else:
-        numeric_cols = list(x.select_dtypes(include=["number"]).columns)
-        categorical_cols = [col for col in x.columns if col not in numeric_cols]
+    numeric_columns: Sequence[str] | None = None,
+    categorical_columns: Sequence[str] | None = None,
+) -> tuple[list[str], list[str]]:
+    """Infer numeric and categorical columns if not explicitly provided."""
+    if numeric_columns is not None and categorical_columns is not None:
+        return list(numeric_columns), list(categorical_columns)
 
-    if not numeric_cols and not categorical_cols:
-        raise ValueError("No usable feature columns found.")
-
+    numeric_cols = list(x.select_dtypes(include=["number"]).columns)
+    categorical_cols = [col for col in x.columns if col not in numeric_cols]
     return numeric_cols, categorical_cols
 
 
-def build_preprocessor(
+def build_preprocessing_pipeline(
     x: pd.DataFrame,
-    numeric_features: Sequence[str] | None = None,
-    categorical_features: Sequence[str] | None = None,
-) -> tuple[ColumnTransformer, NumericCols, CategoricalCols]:
-    """Build a preprocessing pipeline with scaling and encoding."""
-    numeric_cols, categorical_cols = infer_feature_types(
-        x=x,
-        numeric_features=numeric_features,
-        categorical_features=categorical_features,
+    numeric_columns: Sequence[str] | None = None,
+    categorical_columns: Sequence[str] | None = None,
+) -> tuple[ColumnTransformer, list[str], list[str]]:
+    """Build preprocessing pipeline with missing handling, encoding, and scaling."""
+    numeric_cols, categorical_cols = infer_column_types(
+        x,
+        numeric_columns=numeric_columns,
+        categorical_columns=categorical_columns,
     )
 
-    numeric_transformer = Pipeline(
+    numeric_pipeline = Pipeline(
         steps=[
+            ("imputer", SimpleImputer(strategy="median")),
             ("scaler", StandardScaler()),
         ]
     )
 
-    categorical_transformer = Pipeline(
+    categorical_pipeline = Pipeline(
         steps=[
-            ("onehot", OneHotEncoder(handle_unknown="ignore")),
+            ("imputer", SimpleImputer(strategy="most_frequent")),
+            ("encoder", OneHotEncoder(handle_unknown="ignore")),
         ]
     )
 
-    transformers: list[tuple[str, Pipeline, list[str]]] = []
-    if numeric_cols:
-        transformers.append(("num", numeric_transformer, numeric_cols))
-    if categorical_cols:
-        transformers.append(("cat", categorical_transformer, categorical_cols))
-
     preprocessor = ColumnTransformer(
-        transformers=transformers,
+        transformers=[
+            ("num", numeric_pipeline, numeric_cols),
+            ("cat", categorical_pipeline, categorical_cols),
+        ],
         remainder="drop",
     )
 
     return preprocessor, numeric_cols, categorical_cols
-
-
-def split_train_test(
-    x: pd.DataFrame,
-    y: pd.Series,
-    test_size: float = 0.2,
-    random_state: int = 42,
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
-    """Create train/test split with optional stratification for classification."""
-    stratify = y if y.nunique(dropna=False) > 1 else None
-    return train_test_split(
-        x,
-        y,
-        test_size=test_size,
-        random_state=random_state,
-        stratify=stratify,
-    )

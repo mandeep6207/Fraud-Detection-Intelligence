@@ -1,71 +1,64 @@
-"""Train fraud detection models and save them as joblib artifacts."""
+"""Model persistence utilities for fraud detection."""
 
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from typing import Any
 
-from evaluate import print_evaluation
+import joblib
+
 from train import train_models
-from utils import save_joblib_object
 
 
-def train_and_save_models(
+def save_model(model: Any, file_path: str | Path) -> Path:
+    """Save trained model to disk using joblib."""
+    path = Path(file_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(model, path)
+    return path
+
+
+def train_and_save(
     data_path: str | Path,
     target_column: str,
     output_dir: str | Path = "models/artifacts",
-    test_size: float = 0.2,
-    random_state: int = 42,
 ) -> dict[str, Path]:
-    """Train models and save each trained pipeline to disk."""
-    trained_models, results = train_models(
+    """Train project models and save each one as a joblib artifact."""
+    trained_models, _ = train_models(
         data_path=data_path,
         target_column=target_column,
-        test_size=test_size,
-        random_state=random_state,
     )
 
-    output_base = Path(output_dir)
+    output_dir = Path(output_dir)
     saved_paths: dict[str, Path] = {}
 
     for model_name, model in trained_models.items():
-        model_path = output_base / f"{model_name}.joblib"
-        saved_paths[model_name] = save_joblib_object(model, model_path)
-
-    for model_name, metrics in results.items():
-        print_evaluation(model_name, metrics)
+        file_path = output_dir / f"{model_name}.joblib"
+        saved_paths[model_name] = save_model(model, file_path)
 
     return saved_paths
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse command-line arguments for training and model persistence."""
+    """Parse CLI args for model save workflow."""
     parser = argparse.ArgumentParser(description="Train and save fraud detection models.")
-    parser.add_argument("--data-path", required=True, help="Path to training CSV")
+    parser.add_argument("--data-path", required=True, help="Path to CSV dataset")
     parser.add_argument("--target-column", required=True, help="Target column name")
-    parser.add_argument(
-        "--output-dir",
-        default="models/artifacts",
-        help="Directory where model files will be saved",
-    )
-    parser.add_argument("--test-size", type=float, default=0.2, help="Test split ratio")
-    parser.add_argument("--random-state", type=int, default=42, help="Random seed")
+    parser.add_argument("--output-dir", default="models/artifacts", help="Directory to save models")
     return parser.parse_args()
 
 
 def main() -> None:
-    """Run training and save all model artifacts."""
+    """CLI entrypoint for train-and-save workflow."""
     args = parse_args()
-    saved_paths = train_and_save_models(
+    saved = train_and_save(
         data_path=args.data_path,
         target_column=args.target_column,
         output_dir=args.output_dir,
-        test_size=args.test_size,
-        random_state=args.random_state,
     )
-
-    print("\nSaved model artifacts:")
-    for name, path in saved_paths.items():
+    print("Saved models:")
+    for name, path in saved.items():
         print(f"- {name}: {path}")
 
 

@@ -1,4 +1,4 @@
-"""Inference utilities and CLI for fraud prediction."""
+"""Inference utilities for fraud detection models."""
 
 from __future__ import annotations
 
@@ -7,63 +7,68 @@ import json
 from pathlib import Path
 from typing import Any
 
-from utils import load_joblib_object, transaction_to_dataframe
+import joblib
+import pandas as pd
 
 
-PredictionOutput = dict[str, Any]
+def load_model(model_path: str | Path):
+    """Load model from joblib file."""
+    path = Path(model_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Model file not found: {path}")
+    return joblib.load(path)
 
 
-def load_model_for_inference(model_path: str | Path):
-    """Load a saved model pipeline for inference."""
-    return load_joblib_object(model_path)
+def predict_new_data(model, input_df: pd.DataFrame) -> dict[str, Any]:
+    """Predict class and fraud probability for input dataframe."""
+    predictions = model.predict(input_df)
+    result: dict[str, Any] = {"predictions": predictions.tolist()}
 
-
-def predict_transaction(model, transaction: dict[str, Any]) -> PredictionOutput:
-    """Predict fraud label and return fraud probability score for one transaction."""
-    input_df = transaction_to_dataframe(transaction)
-    predicted_label = model.predict(input_df)[0]
-
-    fraud_probability: float | None = None
     if hasattr(model, "predict_proba"):
-        probabilities = model.predict_proba(input_df)[0]
+        prob_matrix = model.predict_proba(input_df)
         classes = list(model.classes_)
 
         if 1 in classes:
             fraud_idx = classes.index(1)
-            fraud_probability = float(probabilities[fraud_idx])
         elif "fraud" in classes:
             fraud_idx = classes.index("fraud")
-            fraud_probability = float(probabilities[fraud_idx])
         else:
-            fraud_probability = float(max(probabilities))
+            fraud_idx = int(prob_matrix.shape[1] - 1)
 
+        result["fraud_probability"] = prob_matrix[:, fraud_idx].tolist()
+
+    return result
+
+
+def predict_from_dict(model_path: str | Path, transaction: dict[str, Any]) -> dict[str, Any]:
+    """Load model and predict fraud on one transaction dictionary."""
+    model = load_model(model_path)
+    input_df = pd.DataFrame([transaction])
+    output = predict_new_data(model, input_df)
     return {
-        "prediction": int(predicted_label) if isinstance(predicted_label, (int, bool)) else predicted_label,
-        "fraud_probability": fraud_probability,
+        "prediction": output["predictions"][0],
+        "fraud_probability": output.get("fraud_probability", [None])[0],
     }
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse prediction CLI arguments."""
-    parser = argparse.ArgumentParser(description="Run fraud prediction for one transaction.")
-    parser.add_argument("--model-path", required=True, help="Path to saved .joblib model")
+    """Parse CLI args for prediction workflow."""
+    parser = argparse.ArgumentParser(description="Predict fraud for new transaction data.")
+    parser.add_argument("--model-path", required=True, help="Path to joblib model")
     parser.add_argument(
-        "--transaction-json",
+        "--input-json",
         required=True,
-        help="Transaction as JSON string, e.g. '{\"amount\": 120.5, \"merchant\": \"A\"}'",
+        help="Input transaction as JSON string",
     )
     return parser.parse_args()
 
 
 def main() -> None:
-    """Load model and score one transaction from JSON input."""
+    """CLI entrypoint for single transaction prediction."""
     args = parse_args()
-    model = load_model_for_inference(args.model_path)
-    transaction = json.loads(args.transaction_json)
-    result = predict_transaction(model, transaction)
-
-    print("Prediction result:")
-    print(result)
+    transaction = json.loads(args.input_json)
+    prediction = predict_from_dict(args.model_path, transaction)
+    print(prediction)
 
 
 if __name__ == "__main__":

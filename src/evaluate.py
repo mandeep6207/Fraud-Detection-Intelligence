@@ -1,38 +1,44 @@
-"""Evaluation helpers for fraud detection classifiers."""
+"""Model evaluation utilities for fraud detection."""
 
 from __future__ import annotations
 
+from typing import Any
+
+import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
+import seaborn as sns
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
 
 
-MetricResult = dict[str, float | np.ndarray]
+def evaluate_classification_model(y_true, y_pred) -> dict[str, Any]:
+    """Compute standard classification metrics and confusion matrix."""
+    average = "binary"
+    if len(np.unique(y_true)) > 2:
+        average = "weighted"
 
-
-def _metric_average(y_true: pd.Series) -> str:
-    """Use binary metrics for binary tasks and weighted for multiclass tasks."""
-    return "binary" if y_true.nunique(dropna=False) == 2 else "weighted"
-
-
-def evaluate_model(model, x_test: pd.DataFrame, y_test: pd.Series) -> MetricResult:
-    """Evaluate a trained model and return key classification metrics."""
-    y_pred = model.predict(x_test)
-    average = _metric_average(y_test)
-
-    metrics: MetricResult = {
-        "accuracy": float(accuracy_score(y_test, y_pred)),
-        "precision": float(precision_score(y_test, y_pred, average=average, zero_division=0)),
-        "recall": float(recall_score(y_test, y_pred, average=average, zero_division=0)),
-        "f1": float(f1_score(y_test, y_pred, average=average, zero_division=0)),
-        "confusion_matrix": confusion_matrix(y_test, y_pred),
+    return {
+        "accuracy": float(accuracy_score(y_true, y_pred)),
+        "precision": float(precision_score(y_true, y_pred, average=average, zero_division=0)),
+        "recall": float(recall_score(y_true, y_pred, average=average, zero_division=0)),
+        "f1": float(f1_score(y_true, y_pred, average=average, zero_division=0)),
+        "confusion_matrix": confusion_matrix(y_true, y_pred),
     }
-    return metrics
 
 
-def print_evaluation(name: str, metrics: MetricResult) -> None:
-    """Pretty-print model metrics and confusion matrix."""
-    print(f"\n=== {name} ===")
+def plot_confusion_matrix(cm: np.ndarray, title: str = "Confusion Matrix"):
+    """Create confusion matrix heatmap."""
+    fig, ax = plt.subplots(figsize=(6, 5))
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", ax=ax)
+    ax.set_title(title)
+    ax.set_xlabel("Predicted")
+    ax.set_ylabel("Actual")
+    fig.tight_layout()
+    return fig
+
+
+def print_metrics(model_name: str, metrics: dict[str, Any]) -> None:
+    """Print model metrics in a clean format."""
+    print(f"\n=== {model_name} ===")
     print(f"Accuracy : {metrics['accuracy']:.4f}")
     print(f"Precision: {metrics['precision']:.4f}")
     print(f"Recall   : {metrics['recall']:.4f}")
