@@ -22,6 +22,21 @@ def print_preview(dataframe: pd.DataFrame, rows: int = 5) -> None:
     print(dataframe.head(rows))
 
 
+def display_dataset_info(dataframe: pd.DataFrame) -> None:
+    """Display shape, columns, dtypes, and missing values for a DataFrame."""
+    print("\n=== Dataset Info ===")
+    print(f"Shape: {dataframe.shape}")
+
+    print("\nColumns:")
+    print(list(dataframe.columns))
+
+    print("\nData types:")
+    print(dataframe.dtypes)
+
+    print("\nMissing values per column:")
+    print(dataframe.isnull().sum())
+
+
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
@@ -41,6 +56,8 @@ def main() -> None:
     """Run the CSV preview workflow."""
     args = parse_args()
     df = load_csv(args.csv_path)
+    display_dataset_info(df)
+    print("\n=== Preview ===")
     print_preview(df, rows=args.rows)
 
 
